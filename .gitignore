@@ -1,0 +1,5 @@
+# Built and per-user files - don't commit these
+*.exe
+WinQuickMenu.ini
+WinQuickMenu.log
+dist/

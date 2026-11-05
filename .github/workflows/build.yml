@@ -1,0 +1,52 @@
+name: Build EXE
+
+# Runs when you push a version tag (e.g. v1.0.0) or start it by hand from the Actions tab.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Download AutoHotkey v2 and Ahk2Exe
+        shell: pwsh
+        run: |
+          Invoke-WebRequest "https://www.autohotkey.com/download/ahk-v2.zip" -OutFile ahk.zip
+          Expand-Archive ahk.zip -DestinationPath ahk -Force
+          $rel = Invoke-RestMethod "https://api.github.com/repos/AutoHotkey/Ahk2Exe/releases/latest"
+          $url = ($rel.assets | Where-Object { $_.name -like "Ahk2Exe*.zip" } | Select-Object -First 1).browser_download_url
+          Invoke-WebRequest $url -OutFile ahk2exe.zip
+          Expand-Archive ahk2exe.zip -DestinationPath ahk2exe -Force
+
+      - name: Compile WinQuickMenu.exe
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory dist -Force | Out-Null
+          $compiler = (Resolve-Path ".\ahk2exe\Ahk2Exe.exe").Path
+          $base     = (Resolve-Path ".\ahk\AutoHotkey64.exe").Path
+          $in       = (Resolve-Path ".\WinQuickMenu.ahk").Path
+          $out      = Join-Path (Resolve-Path ".\dist").Path "WinQuickMenu.exe"
+          $p = Start-Process -FilePath $compiler -ArgumentList "/in `"$in`" /out `"$out`" /base `"$base`" /silent verbose" -Wait -PassThru -NoNewWindow
+          if (-not (Test-Path $out)) { throw "Compile failed (exit code $($p.ExitCode))" }
+          Get-Item $out | Format-List Name, Length
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WinQuickMenu
+          path: dist/WinQuickMenu.exe
+
+      - name: Attach EXE to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/WinQuickMenu.exe
+          generate_release_notes: true
